@@ -1,27 +1,30 @@
-import { MongoClient } from 'mongodb';
+import { createClient } from 'redis';
 
-const uri = process.env.MONGODB_URI;
-const client = new MongoClient(uri);
+const client = createClient({
+  url: process.env.REDIS_URL
+});
 
 export default async function handler(req, res) {
   if (req.method === 'PUT') {
     try {
-      await client.connect();
-      const database = client.db('osubet');
-      const users = database.collection('users');
-      
       const { username, balance } = req.body;
       
-      const result = await users.updateOne(
-        { username },
-        { $set: { balance } }
-      );
+      await client.connect();
+      const usersData = await client.get('users');
+      let users = usersData ? JSON.parse(usersData) : [];
       
-      res.status(200).json({ success: true });
+      const userIndex = users.findIndex(u => u.username === username);
+      if (userIndex !== -1) {
+        users[userIndex].balance = balance;
+        await client.set('users', JSON.stringify(users));
+        await client.disconnect();
+        res.status(200).json({ success: true });
+      } else {
+        await client.disconnect();
+        res.status(404).json({ error: 'User not found' });
+      }
     } catch (error) {
       res.status(500).json({ error: 'Failed to update balance' });
-    } finally {
-      await client.close();
     }
   } else {
     res.status(405).json({ error: 'Method not allowed' });

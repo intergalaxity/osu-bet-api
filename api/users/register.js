@@ -1,24 +1,24 @@
-import { MongoClient } from 'mongodb';
+import { createClient } from 'redis';
 
-const uri = process.env.MONGODB_URI;
-const client = new MongoClient(uri);
+const client = createClient({
+  url: process.env.REDIS_URL
+});
 
 export default async function handler(req, res) {
   if (req.method === 'POST') {
     try {
-      await client.connect();
-      const database = client.db('osubet');
-      const users = database.collection('users');
-      
       const { username, country_code, avatar_url, balance = 0 } = req.body;
       
-      // Check if user exists
-      const existingUser = await users.findOne({ username });
+      await client.connect();
+      const usersData = await client.get('users');
+      let users = usersData ? JSON.parse(usersData) : [];
+      
+      const existingUser = users.find(u => u.username === username);
       if (existingUser) {
+        await client.disconnect();
         return res.status(200).json(existingUser);
       }
       
-      // Create new user
       const newUser = {
         username,
         country_code,
@@ -26,16 +26,16 @@ export default async function handler(req, res) {
         balance,
         questions: 0,
         wins: 0,
-        winrate: 0,
-        createdAt: new Date()
+        winrate: 0
       };
       
-      const result = await users.insertOne(newUser);
+      users.push(newUser);
+      await client.set('users', JSON.stringify(users));
+      await client.disconnect();
+      
       res.status(201).json(newUser);
     } catch (error) {
       res.status(500).json({ error: 'Failed to register user' });
-    } finally {
-      await client.close();
     }
   } else {
     res.status(405).json({ error: 'Method not allowed' });

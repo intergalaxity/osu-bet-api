@@ -1,21 +1,19 @@
-import { MongoClient } from 'mongodb';
+import { createClient } from 'redis';
 
-const uri = process.env.MONGODB_URI;
-const client = new MongoClient(uri);
+const client = createClient({
+  url: process.env.REDIS_URL
+});
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
       await client.connect();
-      const database = client.db('osubet');
-      const users = database.collection('users');
+      const users = await client.get('users');
+      await client.disconnect();
       
-      const allUsers = await users.find({}).toArray();
-      res.status(200).json(allUsers);
+      res.status(200).json(users ? JSON.parse(users) : []);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch leaderboard' });
-    } finally {
-      await client.close();
     }
   } else {
     res.status(405).json({ error: 'Method not allowed' });
